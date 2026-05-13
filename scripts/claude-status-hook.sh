@@ -82,12 +82,16 @@ fi
 
 # ============================================
 # Event: PreToolUse (non-AskUserQuestion)
-# Write red status — user may need to approve this tool.
-# If auto-allowed, next event overwrites to running within seconds.
-# If permission prompt, red persists until user approves.
+# Bash/Write/WebFetch/WebSearch may trigger permission prompts → red
+# Read/Glob/Grep/Edit and others auto-execute → yellow
 # ============================================
 if [ "$HOOK_EVENT" = "PreToolUse" ] && [ "$TOOL_NAME" != "AskUserQuestion" ]; then
-    write_status "needs_confirmation"
+    case "$TOOL_NAME" in
+        Bash|WebFetch|WebSearch)
+            write_status "needs_confirmation" ;;
+        *)
+            write_status "running" ;;
+    esac
     exit 0
 fi
 

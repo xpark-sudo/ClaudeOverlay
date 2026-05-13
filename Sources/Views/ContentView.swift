@@ -142,7 +142,6 @@ struct ContentView: View {
             .frame(width: barW, height: barH)
             .background(barBg)
             .cornerRadius(18)
-            .shadow(color: .black.opacity(0.3), radius: 8, y: 2)
 
             // Expanded panel
             if expanded {
@@ -200,7 +199,6 @@ struct ContentView: View {
                 .frame(width: expandW)
                 .background(Color(red: 0.08, green: 0.08, blue: 0.08, opacity: 0.92))
                 .cornerRadius(18)
-                .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
                 .padding(.top, 6)
                 .transition(.scale(scale: 0.95).combined(with: .opacity))
             }
