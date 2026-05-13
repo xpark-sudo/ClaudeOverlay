@@ -1,0 +1,12 @@
+.build/
+DerivedData/
+*.app
+.DS_Store
+__MACOSX/
+*.swp
+*.swo
+*~
+*.bak
+.claude/
+PRD.md
+UI.md

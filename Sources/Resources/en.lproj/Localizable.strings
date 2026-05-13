@@ -1,0 +1,5 @@
+"no_active_sessions" = "No active sessions";
+"confirm_button" = "Confirm";
+"confirmation_title" = "Confirmation Required";
+"confirmation_cancel" = "Cancel";
+"notify_waiting %d" = "%d session(s) need your attention";

@@ -1,0 +1,5 @@
+"no_active_sessions" = "暂无活动会话";
+"confirm_button" = "确认";
+"confirmation_title" = "需要确认";
+"confirmation_cancel" = "取消";
+"notify_waiting %d" = "%d 个会话需要你的注意";
