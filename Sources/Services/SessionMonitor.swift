@@ -27,6 +27,7 @@ final class SessionMonitor: ObservableObject {
     private let projectsDir = "\(FileManager.default.homeDirectoryForCurrentUser.path)/.claude/projects"
     private var timer: Timer?
     private var previousStatuses: [String: SessionStatus] = [:]
+    private var polling = false
 
     func start() {
         let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -41,21 +42,25 @@ final class SessionMonitor: ObservableObject {
         timer = nil
     }
 
-    // MARK: - Poll (background)
+    // MARK: - Poll (background, non-overlapping)
 
     private func poll() {
+        guard !polling else { return }
+        polling = true
+
         let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(atPath: sessionsDir) else { return }
+        guard let files = try? fm.contentsOfDirectory(atPath: sessionsDir) else {
+            polling = false; return
+        }
 
         let dirs = (sessionsDir, projectsDir)
         let prev = previousStatuses
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            defer { self?.polling = false }
             guard let self = self else { return }
             let result = Self.processDir(files: files, fm: fm, dirs: dirs, previousStatuses: prev)
             DispatchQueue.main.async {
-                let changed = self.sessions != result.sessions || self.summary != result.summary
-                guard changed else { return }
                 self.sessions = result.sessions
                 self.summary = result.summary
                 self.previousStatuses = result.newPrev
