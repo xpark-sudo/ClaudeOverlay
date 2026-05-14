@@ -1,6 +1,38 @@
 import SwiftUI
 
-// MARK: - Right-click menu for CC button
+// MARK: - Design
+
+private enum Dim {
+    static let barW: CGFloat = 180
+    static let expandW: CGFloat = 220
+    static let barH: CGFloat = 42
+    static let rowH: CGFloat = 38
+}
+
+// MARK: - Click Outside
+
+private struct ClickOutsideHandler: NSViewRepresentable {
+    let action: () -> Void
+    func makeNSView(context: Context) -> NSView { let v = ClickOutsideView(); v.action = action; return v }
+    func updateNSView(_ v: NSView, context: Context) { (v as? ClickOutsideView)?.action = action }
+}
+private final class ClickOutsideView: NSView {
+    var action: (() -> Void)?
+    private var monitor: Any?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        guard window != nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
+            guard let self = self, let w = self.window, w.isVisible else { return e }
+            if !w.contentView!.bounds.contains(e.locationInWindow) { self.action?() }
+            return e
+        }
+    }
+    deinit { if let m = monitor { NSEvent.removeMonitor(m) } }
+}
+
+// MARK: - Right Click
 
 private struct RightClickMenuView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
@@ -14,211 +46,225 @@ private struct RightClickMenuView: NSViewRepresentable {
     }
     func updateNSView(_ v: NSView, context: Context) {}
 }
-
 private final class RightClickView: NSView {
     var rightClickMenu: NSMenu?
-    var monitor: Any?
+    private var monitor: Any?
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        guard window != nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] e in
             guard let self = self, let w = self.window, w.isVisible else { return e }
-            let loc = self.convert(e.locationInWindow, from: nil)
-            if self.bounds.contains(loc) {
-                if let m = self.rightClickMenu {
-                    NSMenu.popUpContextMenu(m, with: e, for: self)
-                }
+            if self.bounds.contains(self.convert(e.locationInWindow, from: nil)) {
+                if let m = self.rightClickMenu { NSMenu.popUpContextMenu(m, with: e, for: self) }
                 return nil
             }
             return e
         }
     }
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil
-    }
-    deinit {
-        if let m = monitor { NSEvent.removeMonitor(m) }
-    }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    deinit { if let m = monitor { NSEvent.removeMonitor(m) } }
 }
 
-// MARK: - Click-outside monitor
+// MARK: - Status Dot
 
-private struct ClickOutsideHandler: NSViewRepresentable {
-    let action: () -> Void
-    func makeNSView(context: Context) -> NSView {
-        let v = ClickOutsideView(); v.action = action; return v
-    }
-    func updateNSView(_ v: NSView, context: Context) {
-        (v as? ClickOutsideView)?.action = action
-    }
-}
-private final class ClickOutsideView: NSView {
-    var action: (() -> Void)?
-    var monitor: Any?
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
-            guard let self = self, let w = self.window, w.isVisible else { return e }
-            let loc = e.locationInWindow
-            if !w.contentView!.bounds.contains(loc) {
-                self.action?()
+private struct StatusDot: View {
+    let color: Color
+    let pulse: Bool
+    @State private var scale: CGFloat = 1.0
+    @State private var opacity: Double = 0.4
+
+    var body: some View {
+        ZStack {
+            if pulse {
+                Circle()
+                    .stroke(color.opacity(opacity), lineWidth: 2)
+                    .frame(width: 14, height: 14)
+                    .scaleEffect(scale)
             }
-            return e
+            Circle().fill(color).frame(width: 7, height: 7)
+        }
+        .onAppear {
+            if pulse {
+                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                    scale = 1.5; opacity = 0.1
+                }
+            }
         }
     }
-    deinit { if let m = monitor { NSEvent.removeMonitor(m) } }
 }
 
 // MARK: - ContentView
 
 struct ContentView: View {
-    @ObservedObject var monitor: StatusFileMonitor
+    @ObservedObject var monitor: SessionMonitor
     @State private var expanded = false
 
-    private let barW: CGFloat = 150
-    private let barH: CGFloat = 40
-    private let expandW: CGFloat = 220
-    private let rowH: CGFloat = 36
-
     var body: some View {
-        let hasWaiting = monitor.summary.waiting > 0
-        let barBg = hasWaiting
-            ? Color(red: 0.22, green: 0.04, blue: 0.04, opacity: 0.92)
-            : Color(red: 0.08, green: 0.08, blue: 0.08, opacity: 0.88)
+        let s = monitor.summary
+        let hasWaiting = s.waiting > 0
+
+        // Dynamic bar background
+        let barBg: Color = hasWaiting
+            ? Color(red: 0.18, green: 0.04, blue: 0.04, opacity: 0.92)
+            : Color(red: 0.07, green: 0.07, blue: 0.09, opacity: 0.90)
 
         VStack(spacing: 0) {
             Spacer()
-            // Compact bar
-            HStack(spacing: 8) {
-                // CC Logo with right-click menu
+
+            // === COMPACT BAR ===
+            HStack(spacing: 6) {
+                // Logo + toggle
                 ZStack {
                     Button(action: {
-                        if monitor.summary.total > 0 {
+                        if s.total > 0 {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                 expanded.toggle()
                             }
                         }
                     }) {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(
-                                    colors: [Color(red: 0.6, green: 0.2, blue: 0.9), Color(red: 0.2, green: 0.4, blue: 1.0)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 22, height: 22)
-                            Text("CC")
-                                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                                .foregroundColor(.white)
-                        }
+                        Text("CC")
+                            .font(.system(size: 11, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white.opacity(0.9))
+                            .frame(width: 24, height: 24)
+                            .background(
+                                Circle()
+                                    .fill(LinearGradient(
+                                        colors: [Color.purple.opacity(0.7), Color.blue.opacity(0.6)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    ))
+                            )
                     }
                     .buttonStyle(.plain)
-                    RightClickMenuView()
-                        .frame(width: 22, height: 22)
+                    RightClickMenuView().frame(width: 24, height: 24)
                 }
 
-                // Status symbols — only show non-zero
-                if monitor.summary.total > 0 {
-                    let items: [(status: SessionStatus, count: Int)] = [
-                        (.waiting, monitor.summary.waiting),
-                        (.running, monitor.summary.running),
-                        (.idle, monitor.summary.idle),
-                        (.done, monitor.summary.done),
-                    ].filter { $0.count > 0 }
-                    ForEach(items, id: \.status.rawValue) { item in
-                        HStack(spacing: 2) {
-                            Text(item.status.symbol)
-                                .font(.system(size: 17, weight: .bold))
-                            Text("\(item.count)")
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                // Status indicators — only show non-zero
+                if s.total > 0 {
+                    let items: [(Color, Bool, Int)] = [
+                        (SessionStatus.waiting.color, s.waiting > 0, s.waiting),
+                        (SessionStatus.running.color, false, s.running),
+                        (SessionStatus.idle.color, false, s.idle),
+                    ].filter { $0.2 > 0 }
+                    HStack(spacing: 10) {
+                        ForEach(0..<items.count, id: \.self) { idx in
+                            let item = items[idx]
+                            HStack(spacing: 4) {
+                                StatusDot(color: item.0, pulse: item.1)
+                                Text("\(item.2)")
+                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .foregroundColor(item.0)
+                            }
                         }
-                        .foregroundColor(item.status.color)
                     }
                 } else {
-                    Text("--").font(.system(size: 11)).foregroundColor(.gray.opacity(0.4))
+                    Text("--")
+                        .font(.system(size: 11))
+                        .foregroundColor(.gray.opacity(0.35))
                 }
 
                 Spacer()
-            }
-            .padding(.leading, 8)
-            .padding(.trailing, 8)
-            .frame(width: barW, height: barH)
-            .background(barBg)
-            .cornerRadius(18)
 
-            // Expanded panel
+                // Chevron
+                if s.total > 0 {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.white.opacity(0.3))
+                }
+            }
+            .padding(.leading, 8).padding(.trailing, 10)
+            .frame(width: Dim.barW, height: Dim.barH)
+            .background(barBg)
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(hasWaiting ? 0.12 : 0.05), lineWidth: 0.5)
+            )
+
+            // === EXPANDED ===
             if expanded {
                 VStack(spacing: 0) {
                     HStack {
                         Text("Claude Code")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.white.opacity(0.7))
                         Spacer()
                         Button(action: { withAnimation(.spring()) { expanded = false } }) {
-                            Text("\u{00D7}")
+                            Text("—")
                                 .font(.system(size: 14))
-                                .foregroundColor(.white.opacity(0.5))
+                                .foregroundColor(.white.opacity(0.4))
                         }
                         .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 12)
-                    .frame(height: rowH)
+                    .frame(height: Dim.rowH)
 
-                    Divider().background(Color.white.opacity(0.1))
+                    Divider().background(Color.white.opacity(0.07))
 
-                    if monitor.projects.isEmpty {
-                        Text("No active sessions")
+                    if monitor.sessions.isEmpty {
+                        Text("无活跃会话")
                             .font(.system(size: 11)).foregroundColor(.gray)
-                            .frame(height: rowH * 2)
+                            .frame(height: Dim.rowH * 2)
                     } else {
-                        ForEach(monitor.projects) { p in
-                            HStack(spacing: 10) {
-                                Text(p.status.symbol)
-                                    .font(.system(size: 19, weight: .medium))
-                                    .foregroundColor(p.status.color)
-                                    .frame(width: 22)
-                                Text(midTruncate(p.projectName, 14))
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.85))
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(timeFmt(p.lastUpdated))
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.4))
-                            }
-                            .padding(.horizontal, 12)
-                            .frame(height: rowH)
-                            .background(p.status.rowBg)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                TerminalRouter.shared.jump(to: p)
-                            }
-                            if p.id != monitor.projects.last?.id {
-                                Divider().background(Color.white.opacity(0.06)).padding(.leading, 12)
+                        ForEach(monitor.sessions) { session in
+                            sessionRow(session)
+                            if session.id != monitor.sessions.last?.id {
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 12)
                             }
                         }
                     }
                 }
-                .frame(width: expandW)
-                .background(Color(red: 0.08, green: 0.08, blue: 0.08, opacity: 0.92))
-                .cornerRadius(18)
+                .frame(width: Dim.expandW)
+                .background(Color(red: 0.07, green: 0.07, blue: 0.09, opacity: 0.92))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
                 .padding(.top, 6)
                 .transition(.scale(scale: 0.95).combined(with: .opacity))
             }
         }
         .background(ClickOutsideHandler {
-            if expanded {
-                withAnimation(.spring()) { expanded = false }
-            }
+            if expanded { withAnimation(.spring()) { expanded = false } }
         })
     }
 
-    private func midTruncate(_ s: String, _ maxLen: Int) -> String {
-        if s.count <= maxLen { return s }
-        let half = (maxLen - 3) / 2
-        return String(s.prefix(half)) + "..." + String(s.suffix(half))
-    }
+    // MARK: - Row
 
-    private func timeFmt(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = Calendar.current.isDateInToday(d) ? "HH:mm" : "MM-dd HH:mm"
-        return f.string(from: d)
+    private func sessionRow(_ session: SessionSnapshot) -> some View {
+        HStack(spacing: 8) {
+            // Status dot (with pulse ring when waiting)
+            ZStack {
+                if session.derivedStatus == .waiting {
+                    Circle()
+                        .stroke(session.derivedStatus.color.opacity(0.4), lineWidth: 3)
+                        .frame(width: 16, height: 16)
+                }
+                Circle()
+                    .fill(session.derivedStatus.color)
+                    .frame(width: 8, height: 8)
+            }
+
+            // Name
+            Text(session.projectName)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.85))
+                .lineLimit(1)
+
+            Spacer()
+
+            // Jump arrow
+            Image(systemName: "arrow.up.right")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(.white.opacity(0.3))
+        }
+        .padding(.horizontal, 12)
+        .frame(height: Dim.rowH)
+        .background(session.derivedStatus.rowBg ?? Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            TerminalRouter.shared.jump(to: session)
+        }
     }
 }

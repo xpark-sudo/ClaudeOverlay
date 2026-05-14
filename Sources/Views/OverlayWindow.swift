@@ -3,7 +3,7 @@ import SwiftUI
 
 final class OverlayWindow: NSPanel {
     init(hostingView: NSHostingView<ContentView>) {
-        super.init(contentRect: NSRect(origin: .zero, size: NSSize(width: 240, height: 500)),
+        super.init(contentRect: NSRect(origin: .zero, size: NSSize(width: 320, height: 600)),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered,
                    defer: false)

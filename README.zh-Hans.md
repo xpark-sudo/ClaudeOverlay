@@ -4,40 +4,53 @@
   <a href="README.md">English</a> | <b>中文</b>
 </p>
 
-首个 Claude Code 桌面悬浮监控工具 —— **无需切回终端**，即可实时查看会话状态。当 AI 需要你确认或回答时，悬浮窗变红提醒，点击跳回终端处理。
+Claude Code 桌面悬浮监控工具。**不需要切换回终端**，悬浮窗实时显示会话状态，被阻塞时变红提醒。零 hook、零配置——直接读取 Claude Code 自身的会话数据。
 
 ## 为什么选择 ClaudeOverlay？
 
-Claude Code CLI 执行过程中经常需要用户确认（"是否批准此工具调用？"）。一旦你切换到其他窗口工作，很容易错过确认节点，导致 AI 任务卡住。**ClaudeOverlay 在你的桌面上显示一个悬浮窗**，跨所有桌面空间可见，实时展示项目状态。看到红色提醒后点击即可跳回终端处理。
+Claude Code 执行中经常弹出权限确认或提问。一旦切到其他窗口，很容易错过，AI 就卡住了。**ClaudeOverlay 在所有桌面空间显示一个悬浮窗**，实时彩色状态一目了然。看到红色？点一下跳回终端处理。
 
-### 同类工具对比
+### 同类对比
 
-| 工具 | 桌面悬浮 | 状态提醒 | 无需终端 | 多项目 |
+| 工具 | 桌面悬浮 | 阻塞红警 | 零配置 | 多项目 |
 |------|:---:|:---:|:---:|:---:|
 | **ClaudeOverlay** | ✅ | ✅ | ✅ | ✅ |
 | ccalert | ❌ (仅通知) | ❌ | ✅ | ❌ |
 | vibemon | ✅ | ❌ | ✅ | ✅ |
 | unitmux | ✅ (需 tmux) | ✅ | ❌ | ❌ |
-| agtop | ❌ (TUI) | ❌ | ❌ | ✅ |
+
+## 工作原理
+
+三个零配置数据源，不需要任何 hook：
+
+1. **`~/.claude/sessions/<pid>.json`** — Claude Code 原生维护：PID、状态(busy/idle)、工作目录
+2. **进程树检测** — 检查是否有子进程在跑，区分「工具执行中」和「权限弹窗阻塞」
+3. **Transcript 尾行解析** — 读 `~/.claude/projects/` 的最后事件，检测 AskUserQuestion 和 pending tool_use
+
+```
+~/.claude/sessions/<pid>.json ──→ PID、状态、目录
+         │
+         ├── pgrep -P <pid> ──→ 有子进程？→ 工具执行 / 被阻塞
+         │
+         └── transcript 尾行 ──→ AskUserQuestion？tool_use 未结束？
+                  │
+                  ▼
+           状态：△ 红 / ● 黄 / ↩ 橙
+```
 
 ## 功能特性
 
-- **桌面悬浮窗**：毛玻璃效果窗口，在所有桌面空间可见，不抢占焦点
-- **红色阻塞提醒**：当 AI 需要你确认（权限弹窗、AskUserQuestion），悬浮窗立即变红 △ — 不操作就卡住
-- **自动消红**：确认完成后自动恢复黄色 ●，不需要手动关闭
-- **智能跳转**：点击项目条目自动跳转到对应的终端（iTerm2 / VS Code），无需手动切换窗口
-- **多项目概览**：一目了然所有 Claude Code 会话状态
-- **全局快捷键**：`Cmd+Shift+C` 呼出/隐藏悬浮窗
-- **极致轻量**：SwiftUI 构建，安装包 < 2MB，极低 CPU/内存占用
-
-## 效果演示
-
-<!-- TODO: 添加演示 GIF -->
+- **零配置**：不写 hook，不改 settings.json，不安 shell 脚本。装了就能用
+- **阻塞红警**：权限弹窗、AskUserQuestion 等阻塞场景立即变红 △
+- **进程感知**：通过子进程检测判断真实阻塞状态，不靠猜工具名
+- **智能跳转**：点击会话直接激活对应终端窗口（iTerm2、VS Code、Terminal.app 等都支持）
+- **多项目**：一个悬浮窗看所有 Claude Code 会话
+- **全局快捷键**：`Cmd+Shift+C` 呼出/隐藏
+- **轻量**：SwiftUI，< 1MB，每 1 秒轮询
 
 ## 环境要求
 
-- macOS 12.0+ (Monterey 及以上)
-- Apple Silicon 或 Intel Mac
+- macOS 12.0+
 - 已安装 [Claude Code](https://claude.ai/code) CLI
 
 ## 快速安装
@@ -48,70 +61,18 @@ cd ClaudeOverlay
 bash scripts/install.sh
 ```
 
-安装程序将自动：
-1. 编译 SwiftUI 应用
-2. 安装 `ClaudeOverlay.app` 到 `~/Applications/`
-3. 安装 hook 脚本到 `~/.claude/claude-status-hook.sh`
-4. 将 hook 配置合并到 `~/.claude/settings.json`
-
-### 开机启动
-
-```bash
-bash scripts/launch-at-login.sh
-```
-
-或手动将 `~/Applications/ClaudeOverlay.app` 添加到系统设置的「登录项」中。
-
-## 工作原理
-
-```
-Claude Code 会话
-    │
-    ├── SessionStart  ──→ hook ──→ ● 运行中
-    ├── PreToolUse     ──→ hook ──→ △ 红色（Bash/Write/WebFetch/WebSearch/AskUserQuestion）
-    │                               └── 其他工具 → ● 黄色
-    ├── PostToolUse    ──→ hook ──→ ● 消红（工具执行完毕）
-    └── Stop           ──→ hook ──→ ↩ 空闲
-                    ▲
-                    │ (每 0.2s 轮询 /tmp/claude-sessions/)
-                    │
-            ClaudeOverlay.app
-                    │
-        用户看到红色 △ → 点击跳转终端
-                    │
-        在终端中批准 / 回答问题
-                    │
-        PostToolUse 自动消红 → ●
-```
-
-## 文件结构
-
-```
-~/.claude/
-├── settings.json                  # hooks 配置（安装时自动合并）
-├── claude-status-hook.sh          # hook 脚本
-└── claude-overlay/
-    └── preferences.json           # 用户偏好设置
-
-/tmp/claude-sessions/              # 各项目状态文件（空闲 5 分钟后自动清理）
-```
+编译并安装 `ClaudeOverlay.app` 到 `~/Applications/`，配置开机自启。
 
 ## 卸载
 
 ```bash
-# 停止应用
 pkill -f ClaudeOverlay
-
-# 移除开机启动
 launchctl unload ~/Library/LaunchAgents/com.claudeoverlay.app.plist
 rm -f ~/Library/LaunchAgents/com.claudeoverlay.app.plist
-
-# 删除应用和脚本
 rm -rf ~/Applications/ClaudeOverlay.app
-rm -f ~/.claude/claude-status-hook.sh
 ```
 
-hooks 配置已合并到 `~/.claude/settings.json` 中，如需完全移除请手动编辑该文件，删除 `hooks` 下的 `SessionStart`、`PreToolUse`、`PostToolUse`、`Stop` 段落。
+不需要清理 hook 配置。
 
 ## 从源码构建
 
@@ -122,10 +83,6 @@ swift build -c release
 bash scripts/build.sh
 open .build/ClaudeOverlay.app
 ```
-
-## 参与贡献
-
-欢迎提交贡献！请先开 Issue 讨论你希望修改的内容。
 
 ## 开源协议
 

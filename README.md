@@ -4,7 +4,7 @@
   <b>English</b> | <a href="README.zh-Hans.md">中文</a>
 </p>
 
-The first desktop overlay for Claude Code that lets you monitor sessions and see when attention is needed — **without switching back to the terminal**. When Claude needs your approval or answer, the overlay turns red. Click to jump back and keep things moving.
+A desktop overlay for Claude Code that monitors sessions and alerts you when attention is needed — **without switching back to the terminal**. No hooks, no config files — reads Claude Code's own session data directly.
 
 ![License](https://img.shields.io/github/license/xpark-sudo/ClaudeOverlay)
 ![Platform](https://img.shields.io/badge/platform-macOS%2012.0%2B-blue)
@@ -12,36 +12,49 @@ The first desktop overlay for Claude Code that lets you monitor sessions and see
 
 ## Why ClaudeOverlay?
 
-Claude Code CLI often pauses to ask for confirmation ("Approve this tool call?"). If you've switched to another window, you'll miss it — and the AI sits idle. **ClaudeOverlay shows a floating window on your desktop** that stays visible across all spaces, displaying real-time project status with color-coded indicators. See a red alert? Click to jump back to your terminal and handle it.
+Claude Code CLI often pauses for permission prompts or questions. If you've switched to another window, you'll miss it — and the AI sits idle. **ClaudeOverlay shows a floating window** visible across all Spaces with real-time status. Red alert? Click to jump back to your terminal.
 
 ### vs. Alternatives
 
-| Tool | Desktop Overlay | Status Alerts | No Terminal Required | Multi-Project |
+| Tool | Desktop Overlay | Red Alert on Block | No Hooks Needed | Multi-Project |
 |------|:---:|:---:|:---:|:---:|
 | **ClaudeOverlay** | Yes | Yes | Yes | Yes |
 | ccalert | No (notification) | No | Yes | No |
 | vibemon | Yes | No | Yes | Yes |
 | unitmux | Yes (requires tmux) | Yes | No | No |
-| agtop | No (TUI) | No | No | Yes |
+
+## How It Works
+
+ClaudeOverlay reads three zero-config data sources — no hooks, no settings.json changes:
+
+1. **`~/.claude/sessions/<pid>.json`** — Claude Code writes these natively: PID, status (busy/idle), working directory
+2. **Process tree** — detects child processes to distinguish "tool running" from "blocked waiting for permission"
+3. **Transcript tail** — reads the last events from `~/.claude/projects/` to detect AskUserQuestion and pending tool calls
+
+```
+~/.claude/sessions/<pid>.json ──→ PID, status, cwd
+         │
+         ├── pgrep -P <pid> ──→ child processes? → tool running vs blocked
+         │
+         └── transcript tail ──→ AskUserQuestion? pending tool_use?
+                  │
+                  ▼
+           Status: △ red / ● yellow / ↩ idle
+```
 
 ## Features
 
-- **Floating Overlay**: Frosted glass window visible on all Spaces, doesn't steal focus
-- **Red Alert on Block**: Turns red △ when Claude needs your approval (permission prompts, AskUserQuestion) — flow is blocked until you act
-- **Auto-clear**: Red automatically clears to yellow ● once confirmed, no manual dismiss needed
-- **Smart Jump**: Click any project to jump directly to its terminal (iTerm2 / VS Code)
-- **Multi-Project**: Monitor all your Claude Code sessions in one view
-- **Global Hotkey**: `Cmd+Shift+C` to show/hide the overlay
-- **Lightweight**: Built with SwiftUI, app bundle < 2MB, minimal CPU/memory
-
-## Screenshots
-
-<!-- TODO: Add GIF/screenshots -->
+- **Zero config**: No hooks, no settings.json modification, no shell scripts. Just install and run.
+- **Red alert on block**: Turns red △ when Claude needs your input (permission prompts, AskUserQuestion)
+- **Process-aware**: Detects actual blocking by checking child processes — not guessing by tool name
+- **Smart jump**: Click any session to activate its terminal window (works with iTerm2, VS Code, Terminal.app, and others)
+- **Multi-project**: Monitor all Claude Code sessions in one view
+- **Global hotkey**: `Cmd+Shift+C` to show/hide
+- **Lightweight**: SwiftUI, < 1MB, polls every 1s
 
 ## Requirements
 
-- macOS 12.0+ (Monterey or later)
-- Apple Silicon or Intel Mac
+- macOS 12.0+
 - [Claude Code](https://claude.ai/code) CLI installed
 
 ## Quick Install
@@ -52,70 +65,18 @@ cd ClaudeOverlay
 bash scripts/install.sh
 ```
 
-This will:
-1. Build the SwiftUI app
-2. Install `ClaudeOverlay.app` to `~/Applications/`
-3. Install the hook script to `~/.claude/claude-status-hook.sh`
-4. Merge hook configuration into `~/.claude/settings.json`
-
-### Launch on startup
-
-```bash
-bash scripts/launch-at-login.sh
-```
-
-Or manually add `~/Applications/ClaudeOverlay.app` to Login Items in System Settings.
-
-## How It Works
-
-```
-Claude Code Session
-    │
-    ├── SessionStart  ──→ hook ──→ ● running
-    ├── PreToolUse     ──→ hook ──→ △ red (Bash/Write/WebFetch/WebSearch/AskUserQuestion)
-    │                               └── other tools → ● yellow
-    ├── PostToolUse    ──→ hook ──→ ● clear red (tool completed)
-    └── Stop           ──→ hook ──→ ↩ idle
-                    ▲
-                    │ (polls /tmp/claude-sessions/ every 0.2s)
-                    │
-            ClaudeOverlay.app
-                    │
-        User sees red △ → clicks to jump to terminal
-                    │
-        Approves/answers in terminal
-                    │
-        PostToolUse clears red → ●
-```
-
-## File Structure
-
-```
-~/.claude/
-├── settings.json                  # hooks config (auto-merged by install)
-├── claude-status-hook.sh          # hook script
-└── claude-overlay/
-    └── preferences.json           # user settings
-
-/tmp/claude-sessions/              # per-project status files (auto-cleaned after 5 min idle)
-```
+This builds and installs `ClaudeOverlay.app` to `~/Applications/` and configures auto-launch.
 
 ## Uninstall
 
 ```bash
-# Stop the app
 pkill -f ClaudeOverlay
-
-# Remove from startup
 launchctl unload ~/Library/LaunchAgents/com.claudeoverlay.app.plist
 rm -f ~/Library/LaunchAgents/com.claudeoverlay.app.plist
-
-# Remove app and hook script
 rm -rf ~/Applications/ClaudeOverlay.app
-rm -f ~/.claude/claude-status-hook.sh
 ```
 
-Hooks are merged into `~/.claude/settings.json`. To fully remove, manually edit that file and delete the `SessionStart`, `PreToolUse`, `PostToolUse`, and `Stop` sections under `hooks`.
+That's it — no hook cleanup needed.
 
 ## Build from Source
 
@@ -126,10 +87,6 @@ swift build -c release
 bash scripts/build.sh
 open .build/ClaudeOverlay.app
 ```
-
-## Contributing
-
-Contributions are welcome! Please open an issue first to discuss what you'd like to change.
 
 ## License
 

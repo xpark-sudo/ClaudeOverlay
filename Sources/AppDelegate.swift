@@ -5,10 +5,10 @@ import UserNotifications
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: OverlayWindow?
-    private var monitor: StatusFileMonitor?
+    private var monitor: SessionMonitor?
     private var hotkey: HotkeyManager?
     private var subs = Set<AnyCancellable>()
-    private var hadWaiting = false
+    private var lastNotify = Date.distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Single-instance enforcement via PID file
@@ -19,12 +19,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.setActivationPolicy(.accessory)
 
-        let m = StatusFileMonitor()
+        let m = SessionMonitor()
         self.monitor = m
         m.start()
 
         let contentView = ContentView(monitor: m)
-
         let host = NSHostingView(rootView: contentView)
 
         let w = OverlayWindow(hostingView: host)
@@ -35,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupHotkey()
         observeSessions(m)
         requestNotificationPermission()
-        AppSettings.shared.ensureDirectoriesExist()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -90,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Session observation
 
-    private func observeSessions(_ m: StatusFileMonitor) {
+    private func observeSessions(_ m: SessionMonitor) {
         m.$summary
             .dropFirst()
             .receive(on: DispatchQueue.main)
@@ -99,10 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if s.total > 0, self.window?.isVisible == false {
                     self.show()
                 }
-                if s.waiting > 0, !self.hadWaiting {
+                if s.waiting > 0, Date().timeIntervalSince(self.lastNotify) > 30 {
+                    self.lastNotify = Date()
                     self.sendNotification(count: s.waiting)
                 }
-                self.hadWaiting = s.waiting > 0
             }
             .store(in: &subs)
     }
