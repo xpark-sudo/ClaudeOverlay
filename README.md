@@ -60,12 +60,10 @@ ClaudeOverlay reads three zero-config data sources — no hooks, no settings.jso
 ## Quick Install
 
 ```bash
-git clone https://github.com/xpark-sudo/ClaudeOverlay.git
-cd ClaudeOverlay
-bash scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/xpark-sudo/ClaudeOverlay/main/scripts/install.sh | bash
 ```
 
-This builds and installs `ClaudeOverlay.app` to `~/Applications/` and configures auto-launch.
+This downloads the pre-built app — **no Xcode required**.
 
 ## Uninstall
 
@@ -76,9 +74,9 @@ rm -f ~/Library/LaunchAgents/com.claudeoverlay.app.plist
 rm -rf ~/Applications/ClaudeOverlay.app
 ```
 
-That's it — no hook cleanup needed.
+No hooks to clean up.
 
-## Build from Source
+### Build from Source (for developers)
 
 ```bash
 git clone https://github.com/xpark-sudo/ClaudeOverlay.git

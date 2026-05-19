@@ -1,0 +1,30 @@
+name: Build and Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          swift build -c release
+          bash scripts/build.sh
+
+      - name: Package
+        run: |
+          cd .build
+          zip -r ClaudeOverlay.app.zip ClaudeOverlay.app
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: .build/ClaudeOverlay.app.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
